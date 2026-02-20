@@ -14,7 +14,7 @@ Claude Code stores conversation logs as JSONL files under `~/.claude/projects/`.
 
 ## Usage
 
-- Download the binary from the [releases](releases) page (MacOS arm64, will build a win/linux binary soon)
+- Download the binary from the [releases](/../../releases) page (MacOS arm64, will build a win/linux binary soon)
 - `chmod +x` the binary
 - run the binary
 ```bash

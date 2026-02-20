@@ -51,6 +51,8 @@ public static class InteractiveUI
 
 			var key = Console.ReadKey(true);
 
+			int pageSize = Math.Max(1, Console.WindowHeight - 4);
+
 			switch (key.Key)
 			{
 				case ConsoleKey.UpArrow:
@@ -58,6 +60,18 @@ public static class InteractiveUI
 					break;
 				case ConsoleKey.DownArrow:
 					if (selected < conversations.Count - 1) selected++;
+					break;
+				case ConsoleKey.PageUp:
+					selected = Math.Max(0, selected - pageSize);
+					break;
+				case ConsoleKey.PageDown:
+					selected = Math.Min(conversations.Count - 1, selected + pageSize);
+					break;
+				case ConsoleKey.Home:
+					selected = 0;
+					break;
+				case ConsoleKey.End:
+					selected = conversations.Count - 1;
 					break;
 				case ConsoleKey.Enter:
 					ShowConversationDetail(conversations[selected]);
@@ -101,7 +115,7 @@ public static class InteractiveUI
 			var prefix = i == selected ? "> " : "  ";
 			var style = i == selected ? "bold white on blue" : "default";
 
-			var line = $"{conv.Date:yyyy-MM-dd HH:mm}  {conv.Title,-30}  {conv.FirstMessage}";
+			var line = $"{conv.Date:yyyy-MM-dd HH:mm}  {conv.FirstMessage}";
 
 			int maxWidth = Math.Max(10, Console.WindowWidth - 3);
 			if (line.Length > maxWidth)

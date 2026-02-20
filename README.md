@@ -32,7 +32,7 @@ Claude Code stores conversation logs as JSONL files under `~/.claude/projects/` 
 
 - [.NET 10](https://dotnet.microsoft.com/) SDK or later
 
-## Build & Run
+## Building srouces
 
 ```bash
 dotnet build --project ClaudeChatManager

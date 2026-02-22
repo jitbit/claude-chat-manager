@@ -24,6 +24,8 @@ Claude Code stores conversation logs as JSONL files under `~/.claude/projects/` 
 ./ClaudeChatManager
 ```
 
+(if Gatekeeper prevents you from launching it on a Mac, open "System Settings → Privacy & Security", scroll down to "Security", click "Open anyway" next to the app)
+
 ## Usage
 
 Use arrow keys to navigate, **Enter** to view details, **Delete/Backspace** to remove a conversation, and **Esc** to go back.

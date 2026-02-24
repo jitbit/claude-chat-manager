@@ -1,7 +1,8 @@
 name: Build NativeAOT
 
 on:
-  workflow_dispatch:
+  release:
+    types: [created]
 
 jobs:
   build:
@@ -15,6 +16,8 @@ jobs:
             rid: osx-arm64
             artifact: ClaudeChatManager
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -34,8 +37,7 @@ jobs:
         if: runner.os == 'macOS'
         run: cd publish && zip ClaudeChatManager-${{ matrix.rid }}.zip ${{ matrix.artifact }}
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ClaudeChatManager-${{ matrix.rid }}
-          path: publish/ClaudeChatManager-${{ matrix.rid }}.zip
+          files: publish/ClaudeChatManager-${{ matrix.rid }}.zip

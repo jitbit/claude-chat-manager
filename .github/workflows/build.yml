@@ -1,0 +1,36 @@
+name: Build NativeAOT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            artifact: ClaudeChatManager.exe
+          - os: macos-14
+            rid: osx-arm64
+            artifact: ClaudeChatManager
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: dotnet publish ClaudeChatManager/ClaudeChatManager.csproj -c Release -r ${{ matrix.rid }} -o publish
+
+      - name: Zip
+        shell: bash
+        run: cd publish && zip ClaudeChatManager-${{ matrix.rid }}.zip ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeChatManager-${{ matrix.rid }}
+          path: publish/ClaudeChatManager-${{ matrix.rid }}.zip

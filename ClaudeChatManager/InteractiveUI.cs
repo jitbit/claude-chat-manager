@@ -2,9 +2,12 @@ using Spectre.Console;
 
 namespace ClaudeChatManager;
 
+/// <summary>
+/// Entry point for the interactive TUI. Shows a project picker in a loop;
+/// selecting a project opens its conversation list.
+/// </summary>
 public static class InteractiveUI
 {
-	private static bool _alwaysDelete;
 	public static void Run()
 	{
 		while (true)
@@ -26,14 +29,40 @@ public static class InteractiveUI
 					.UseConverter(p => Markup.Escape(p.Name))
 					.AddChoices(projects));
 
-			ShowConversations(project);
+			new ConversationListScreen(project).Run();
 		}
 	}
+}
 
-	private static void ShowConversations(ProjectInfo project)
+/// <summary>
+/// Full-screen conversation list with keyboard navigation, inline filtering,
+/// and delete support. Focus can be on the filter input or on a list item.
+/// </summary>
+public class ConversationListScreen
+{
+	private readonly ProjectInfo _project;
+	private List<ConversationInfo> _allConversations;
+
+	// Selection state: _selected is the highlighted list index (null = nothing highlighted),
+	// _filterFocused means the filter textbox has focus instead of the list.
+	private int? _selected = 0;
+	private int _scrollOffset;
+	private string _filter = "";
+	private bool _filterFocused;
+
+	// When true, skip the delete confirmation prompt for the rest of the session
+	private bool _alwaysDelete;
+
+	public ConversationListScreen(ProjectInfo project)
 	{
-		var conversations = ChatScanner.GetConversations(project.Path);
-		if (conversations.Count == 0)
+		_project = project;
+		_allConversations = ChatScanner.GetConversations(project.Path);
+	}
+
+	/// <summary>Main input loop. Returns when user presses Esc (with no active filter).</summary>
+	public void Run()
+	{
+		if (_allConversations.Count == 0)
 		{
 			AnsiConsole.Clear();
 			AnsiConsole.MarkupLine("[yellow]No conversations found.[/]");
@@ -42,85 +71,198 @@ public static class InteractiveUI
 			return;
 		}
 
-		int selected = 0;
-		int scrollOffset = 0;
-
 		while (true)
 		{
-			DrawConversationList(project, conversations, selected, ref scrollOffset);
+			var filtered = GetFilteredConversations();
+
+			// Clamp selection if the filter narrowed the list
+			if (_selected.HasValue && _selected.Value >= filtered.Count)
+				_selected = filtered.Count > 0 ? filtered.Count - 1 : null;
+
+			Draw(filtered);
 
 			var key = Console.ReadKey(true);
-
-			int pageSize = Math.Max(1, Console.WindowHeight - 4);
-
-			switch (key.Key)
-			{
-				case ConsoleKey.UpArrow:
-					if (selected > 0) selected--;
-					break;
-				case ConsoleKey.DownArrow:
-					if (selected < conversations.Count - 1) selected++;
-					break;
-				case ConsoleKey.PageUp:
-					selected = Math.Max(0, selected - pageSize);
-					break;
-				case ConsoleKey.PageDown:
-					selected = Math.Min(conversations.Count - 1, selected + pageSize);
-					break;
-				case ConsoleKey.Home:
-					selected = 0;
-					break;
-				case ConsoleKey.End:
-					selected = conversations.Count - 1;
-					break;
-				case ConsoleKey.Enter:
-					ShowConversationDetail(conversations[selected]);
-					break;
-				case ConsoleKey.Delete:
-				case ConsoleKey.Backspace:
-					if (ConfirmDelete(conversations[selected]))
-					{
-						ChatScanner.DeleteConversation(conversations[selected]);
-						conversations.RemoveAt(selected);
-						if (selected >= conversations.Count && selected > 0) selected--;
-						if (conversations.Count == 0) return;
-					}
-					break;
-				case ConsoleKey.Escape:
-					return;
-			}
+			if (HandleKey(key, filtered))
+				return; // signal to exit this screen
 		}
 	}
 
-	private static void DrawConversationList(ProjectInfo project, List<ConversationInfo> conversations, int selected, ref int scrollOffset)
+	private List<ConversationInfo> GetFilteredConversations()
+	{
+		if (string.IsNullOrEmpty(_filter))
+			return _allConversations;
+
+		return _allConversations
+			.Where(c => c.FirstMessage.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+			.ToList();
+	}
+
+	/// <summary>
+	/// Processes a single keypress. Returns true if the screen should close.
+	/// </summary>
+	private bool HandleKey(ConsoleKeyInfo key, List<ConversationInfo> filtered)
+	{
+		int pageSize = Math.Max(1, Console.WindowHeight - 5);
+
+		switch (key.Key)
+		{
+			// --- Navigation ---
+			case ConsoleKey.UpArrow:
+				if (_selected.HasValue && _selected.Value > 0)
+					_selected--;
+				else if (_filter.Length > 0) // at top of list, move focus to filter
+					FocusOnFilter();
+				break;
+			case ConsoleKey.DownArrow:
+				if (_filterFocused && filtered.Count > 0)
+					FocusOnList(0);
+				else if (_selected.HasValue && _selected.Value < filtered.Count - 1)
+					_selected++;
+				break;
+			case ConsoleKey.PageUp:
+				if (filtered.Count > 0)
+					FocusOnList(Math.Max(0, (_selected ?? 0) - pageSize));
+				break;
+			case ConsoleKey.PageDown:
+				if (filtered.Count > 0)
+					FocusOnList(Math.Min(filtered.Count - 1, (_selected ?? 0) + pageSize));
+				break;
+			case ConsoleKey.Home:
+				if (filtered.Count > 0)
+					FocusOnList(0);
+				break;
+			case ConsoleKey.End:
+				if (filtered.Count > 0)
+					FocusOnList(filtered.Count - 1);
+				break;
+
+			// --- Actions ---
+			case ConsoleKey.Enter:
+				if (_selected.HasValue)
+					ShowConversationDetail(filtered[_selected.Value]);
+				break;
+			case ConsoleKey.Delete:
+				if (_selected.HasValue && TryDeleteSelected(filtered))
+					return true; // no conversations left
+				break;
+			case ConsoleKey.Backspace:
+				if (_filterFocused)
+					HandleBackspaceInFilter();
+				else if (_selected.HasValue && TryDeleteSelected(filtered))
+					return true;
+				break;
+
+			// --- Filter / exit ---
+			case ConsoleKey.Escape:
+				if (_filter.Length > 0)
+					ClearFilter();
+				else
+					return true; // exit screen
+				break;
+			default:
+				if (key.KeyChar >= ' ')
+					AppendToFilter(key.KeyChar);
+				break;
+		}
+
+		return false;
+	}
+
+	private void FocusOnList(int index)
+	{
+		_selected = index;
+		_filterFocused = false;
+	}
+
+	private void FocusOnFilter()
+	{
+		_selected = null;
+		_filterFocused = true;
+	}
+
+	private void AppendToFilter(char c)
+	{
+		_filter += c;
+		FocusOnFilter();
+		_scrollOffset = 0;
+	}
+
+	private void HandleBackspaceInFilter()
+	{
+		if (_filter.Length > 0)
+		{
+			_filter = _filter[..^1];
+			if (_filter.Length == 0) // filter emptied, snap back to list
+				FocusOnList(0);
+		}
+	}
+
+	private void ClearFilter()
+	{
+		_filter = "";
+		FocusOnList(0);
+		_scrollOffset = 0;
+	}
+
+	/// <summary>
+	/// Confirms and deletes the currently selected conversation.
+	/// Returns true if no conversations remain (caller should exit).
+	/// </summary>
+	private bool TryDeleteSelected(List<ConversationInfo> filtered)
+	{
+		if (!_selected.HasValue)
+			return false;
+
+		var conv = filtered[_selected.Value];
+		if (!ConfirmDelete(conv))
+			return false;
+
+		_allConversations.Remove(conv);
+		ChatScanner.DeleteConversation(conv);
+		return _allConversations.Count == 0;
+	}
+
+	private void Draw(List<ConversationInfo> conversations)
 	{
 		AnsiConsole.Clear();
-		AnsiConsole.MarkupLine($"[bold]{Markup.Escape(project.Name)}[/]  [dim]({conversations.Count} chats)[/]");
-		AnsiConsole.MarkupLine("[dim]Up/Down: navigate | Enter: details | Del/Backspace: delete | Esc: back[/]\n");
+		AnsiConsole.MarkupLine($"[bold]{Markup.Escape(_project.Name)}[/]  [dim]({conversations.Count} chats)[/]");
 
-		// 3 lines used by header above, leave 1 line margin at bottom
-		int pageSize = Math.Max(1, Console.WindowHeight - 4);
+		// Filter bar (only visible when filter is active)
+		if (_filter.Length > 0)
+		{
+			var filterStyle = _filterFocused ? "bold yellow" : "yellow";
+			var cursor = _filterFocused ? "_" : "";
+			AnsiConsole.MarkupLine($"[{filterStyle}]Filter: {Markup.Escape(_filter)}{cursor}[/]  [dim](Esc to clear)[/]");
+		}
+		AnsiConsole.MarkupLine("[dim]Up/Down: navigate | Enter: details | Del/Backspace: delete | Esc: back | Type to filter[/]\n");
 
-		// adjust scroll offset to keep selected item visible
-		if (selected < scrollOffset)
-			scrollOffset = selected;
-		if (selected >= scrollOffset + pageSize)
-			scrollOffset = selected - pageSize + 1;
+		// Scroll the viewport to keep the selection visible
+		int headerLines = _filter.Length > 0 ? 5 : 4;
+		int pageSize = Math.Max(1, Console.WindowHeight - headerLines);
 
-		int endIdx = Math.Min(scrollOffset + pageSize, conversations.Count);
+		if (_selected.HasValue)
+		{
+			if (_selected.Value < _scrollOffset)
+				_scrollOffset = _selected.Value;
+			if (_selected.Value >= _scrollOffset + pageSize)
+				_scrollOffset = _selected.Value - pageSize + 1;
+		}
 
-		for (int i = scrollOffset; i < endIdx; i++)
+		// Render visible rows
+		int endIdx = Math.Min(_scrollOffset + pageSize, conversations.Count);
+		for (int i = _scrollOffset; i < endIdx; i++)
 		{
 			var conv = conversations[i];
-			var prefix = i == selected ? "> " : "  ";
-			var style = i == selected ? "bold white on blue" : "default";
+			bool isSelected = _selected.HasValue && i == _selected.Value;
+			var prefix = isSelected ? "> " : "  ";
+			var style = isSelected ? "bold white on blue" : "default";
 
 			var line = $"{conv.Date:yyyy-MM-dd HH:mm}  {conv.FirstMessage}";
 
+			// Truncate and pad to fill the row width
 			int maxWidth = Math.Max(10, Console.WindowWidth - 3);
 			if (line.Length > maxWidth)
 				line = line[..maxWidth];
-
 			line = line.PadRight(maxWidth);
 
 			AnsiConsole.Markup($"[{style}]{prefix}{Markup.Escape(line)}[/]");
@@ -143,7 +285,7 @@ public static class InteractiveUI
 		Console.ReadKey(true);
 	}
 
-	private static bool ConfirmDelete(ConversationInfo conv)
+	private bool ConfirmDelete(ConversationInfo conv)
 	{
 		if (_alwaysDelete) return true;
 

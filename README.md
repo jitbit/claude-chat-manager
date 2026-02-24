@@ -15,35 +15,42 @@ Claude Code stores conversation logs as JSONL files under `~/.claude/projects/` 
 - Delete conversations (with confirmation prompt)
 - Keyboard-driven navigation
 
-## Usage
+## Installation
 
-- Download the binary from the [releases](/../../releases) page (MacOS arm64, will build a win/linux binary soon)
+- Download the 2MB binary from the [releases](/../../releases) page (MacOS arm64 or win-x64)
 - `chmod +x` the binary
 - run the binary
 ```bash
 ./ClaudeChatManager
 ```
 
-## Runtime requirements
+(if Gatekeeper prevents you from launching it on a Mac, open "System Settings → Privacy & Security", scroll down to "Security", click "Open anyway" next to the app)
 
-- [none] build produces a native AOT binary
+## Usage
+
+Use arrow keys to navigate, **Enter** to view details, **Delete/Backspace** to remove a conversation, and **Esc** to go back.
 
 ## Build requirements
 
 - [.NET 10](https://dotnet.microsoft.com/) SDK or later
 
-## Build & Run
+I don't have access to a Linux machine at the moment (only Mac/Win) so haven't built a linux version. If you'd like to run on Linux, - install .NET SDK and build it your self
+
+## Building sources
 
 ```bash
 dotnet build --project ClaudeChatManager
 ```
 
-To publish a native AOT binary:
+Run from sources
+
+
+```bash
+dotnet run --project ClaudeChatManager
+```
+
+To publish a compiled native AOT binary:
 
 ```bash
 dotnet publish ClaudeChatManager -c Release
 ```
-
-## Usage
-
-Use arrow keys to navigate, **Enter** to view details, **Delete/Backspace** to remove a conversation, and **Esc** to go back.

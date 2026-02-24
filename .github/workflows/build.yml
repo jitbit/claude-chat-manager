@@ -25,8 +25,13 @@ jobs:
       - name: Publish
         run: dotnet publish ClaudeChatManager/ClaudeChatManager.csproj -c Release -r ${{ matrix.rid }} -o publish
 
-      - name: Zip
-        shell: bash
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path publish/${{ matrix.artifact }} -DestinationPath publish/ClaudeChatManager-${{ matrix.rid }}.zip
+
+      - name: Zip (macOS)
+        if: runner.os == 'macOS'
         run: cd publish && zip ClaudeChatManager-${{ matrix.rid }}.zip ${{ matrix.artifact }}
 
       - name: Upload artifact
